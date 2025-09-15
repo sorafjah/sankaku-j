@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>インタラクティブ三角定規</title>
+    <style>
+        /* --- 基本的なページ設定 --- */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* ページ全体のスクロールを禁止 */
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f0f0f0; /* 背景色 */
+        }
+
+        /* --- SVGと操作エリアのコンテナ --- */
+        #container {
+            width: 100%;
+            height: 100%;
+            touch-action: none; /* ブラウザのデフォルトのタッチ操作(スクロール、ズームなど)を無効化 */
+            cursor: grab;
+            position: relative;
+        }
+        #container:active {
+            cursor: grabbing;
+        }
+
+        /* --- SVG要素のスタイル --- */
+        #canvas {
+            width: 100%;
+            height: 100%;
+            background-color: #ffffff; /* 背景を白に変更 */
+        }
+
+        /* --- 三角定規本体のスタイル --- */
+        .ruler-body {
+            fill: rgba(135, 206, 250, 0.4); /* 定規らしい半透明の水色 (さらに薄く) */
+            stroke: #4a4a4a;
+            stroke-width: 2;
+            stroke-linejoin: round; /* 角を丸める */
+        }
+
+        /* --- 角度マークのスタイル --- */
+        .angle-mark {
+            fill: none; /* 塗りつぶしを無しに */
+            stroke: #333; /* 黒線に変更 */
+            stroke-width: 2; /* 少し太くして見やすく */
+            stroke-linecap: round;
+        }
+
+        /* 90度マークの専用スタイル */
+        .angle-mark-90 {
+            fill: none;
+        }
+
+        /* --- 角度ラベルのスタイル --- */
+        .angle-label {
+            font-size: 20px;
+            font-weight: bold;
+            fill: #111;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            paint-order: stroke; /* 文字の縁取りを先に描画 */
+            stroke: rgba(255, 255, 255, 0.8);
+            stroke-width: 4px;
+            stroke-linejoin: round;
+            user-select: none; /* テキスト選択を無効化 */
+        }
+
+        /* --- UI要素 --- */
+        .ui-button {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 1px solid #ccc;
+            border-radius: 50%;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            font-size: 24px;
+            color: #333;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+        }
+        .ui-button:hover {
+            background-color: #fff;
+        }
+        .ui-button:active {
+            transform: scale(0.95);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <svg id="canvas">
+            <!-- 
+                三角定規全体をこの<g>要素でグループ化します。
+                JavaScriptからは、このグループのtransform属性を操作することで、
+                移動、回転、拡大・縮小をまとめて行います。
+            -->
+            <g id="ruler-group">
+                <!-- 三角形の本体 -->
+                <polygon id="triangle-shape" class="ruler-body" />
+
+                <!-- 角度を示すマーク -->
+                <g id="angle-marks">
+                    <path id="angle-mark-30" class="angle-mark" />
+                    <path id="angle-mark-60" class="angle-mark" />
+                    <path id="angle-mark-90" class="angle-mark angle-mark-90" />
+                </g>
+
+                <!-- 角度のテキストラベル -->
+                <g id="angle-labels">
+                    <text id="angle-label-30" class="angle-label">30°</text>
+                    <text id="angle-label-60" class="angle-label">60°</text>
+                    <text id="angle-label-90" class="angle-label">90°</text>
+                </g>
+            </g>
+        </svg>
+    </div>
+    
+    <!-- リセットボタン -->
+    <button id="reset-button" class="ui-button" title="リセット">🔄</button>
+
+    <script>
+        // --- DOM要素の取得 ---
+        const container = document.getElementById('container');
+        const svg = document.getElementById('canvas');
+        const rulerGroup = document.getElementById('ruler-group');
+        const resetButton = document.getElementById('reset-button');
+
+        // --- 三角形の幾何学的定義 ---
+        // 辺の比率 1 : sqrt(3) : 2 をもとに頂点座標を定義します。
+        // ここでは30°の対辺の長さを基準とします。
+        const BASE_LENGTH = 200; // 30°の対辺の長さ (ピクセル)
+        const vertices = {
+            p90: { x: 0, y: BASE_LENGTH * Math.sqrt(3) }, // 90°の頂点
+            p30: { x: 0, y: 0 },                       // 30°の頂点 (修正)
+            p60: { x: BASE_LENGTH, y: BASE_LENGTH * Math.sqrt(3) }  // 60°の頂点 (修正)
+        };
+
+        // --- 状態管理 ---
+        // 三角定規の現在の状態（位置、スケール、角度）を保持するオブジェクト
+        let transformState = {
+            x: 0,
+            y: 0,
+            scale: 1.0,
+            angle: 0, // 度数法 (degrees)
+        };
+        // リセット用に初期状態を保存
+        const initialTransformState = { ...transformState };
+
+        // --- ポインタ（タッチ/マウス）の状態管理 ---
+        // 現在画面に触れているポインタの情報を保持します。
+        // Mapを使うことで、複数のポインタ(multi-touch)を効率的に管理できます。
+        const pointers = new Map();
+        let lastPointerState = { // 2本指操作用の前回フレームの状態
+            distance: 0,
+            angle: 0,
+            midpoint: { x: 0, y: 0 }
+        };
+
+
+        // --- 初期化処理 ---
+        function initialize() {
+            setupTriangle();
+            centerRuler();
+            addEventListeners();
+            requestAnimationFrame(update); // 描画ループを開始
+        }
+
+        // 三角形のSVG要素を生成・設定
+        function setupTriangle() {
+            // 1. 三角形のポリゴンを設定
+            const triangleShape = document.getElementById('triangle-shape');
+            const points = `${vertices.p30.x},${vertices.p30.y} ${vertices.p90.x},${vertices.p90.y} ${vertices.p60.x},${vertices.p60.y}`; // 頂点の順番を修正
+            triangleShape.setAttribute('points', points);
+
+            // 2. 角度マークとラベルの位置を計算して設定
+            setupAngleIndicators();
+        }
+
+        // 角度マークとラベルをSVG上に配置
+        function setupAngleIndicators() {
+            const MARK_RADIUS = 40; // 角度マークの半径
+
+            // --- 30°のマーク (頂点 p30 at 0,0) ---
+            const p30 = vertices.p30;
+            const angle30 = 30 * Math.PI / 180;
+            const p30_1 = { x: p30.x, y: p30.y + MARK_RADIUS }; // y軸上の点
+            const p30_2 = { x: p30.x + MARK_RADIUS * Math.sin(angle30), y: p30.y + MARK_RADIUS * Math.cos(angle30) }; // 斜辺上の点
+            document.getElementById('angle-mark-30').setAttribute('d', 
+                `M ${p30_1.x} ${p30_1.y} A ${MARK_RADIUS} ${MARK_RADIUS} 0 0 0 ${p30_2.x} ${p30_2.y}`); // sweep-flagを 1 から 0 に変更し、カーブを反転
+
+            // --- 60°のマーク (頂点 p60 at bottom-right) ---
+            const p60 = vertices.p60;
+            const angle60 = 60 * Math.PI / 180;
+            const p60_1 = { x: p60.x - MARK_RADIUS, y: p60.y }; // 水平線上の点
+            const p60_2 = { x: p60.x - MARK_RADIUS * Math.cos(angle60), y: p60.y - MARK_RADIUS * Math.sin(angle60) }; // 斜辺上の点
+            document.getElementById('angle-mark-60').setAttribute('d', 
+                `M ${p60_1.x} ${p60_1.y} A ${MARK_RADIUS} ${MARK_RADIUS} 0 0 1 ${p60_2.x} ${p60_2.y}`); // sweep-flagを 0 から 1 に変更し、カーブを反転
+
+            // --- 90°のマーク ---
+            const p90 = vertices.p90;
+            const size90 = MARK_RADIUS * 0.8;
+            document.getElementById('angle-mark-90').setAttribute('d', 
+                `M ${p90.x} ${p90.y - size90} L ${p90.x + size90} ${p90.y - size90} L ${p90.x + size90} ${p90.y}`);
+            
+            // ラベルの初期位置設定（updateループで動的に更新される）
+            document.getElementById('angle-label-30').setAttribute('x', vertices.p30.x);
+            document.getElementById('angle-label-30').setAttribute('y', vertices.p30.y);
+            document.getElementById('angle-label-60').setAttribute('x', vertices.p60.x);
+            document.getElementById('angle-label-60').setAttribute('y', vertices.p60.y);
+            document.getElementById('angle-label-90').setAttribute('x', vertices.p90.x);
+            document.getElementById('angle-label-90').setAttribute('y', vertices.p90.y);
+        }
+
+        // 定規を画面中央に配置
+        function centerRuler() {
+            const bbox = rulerGroup.getBBox(); // バウンディングボックスを取得
+            transformState.x = (svg.clientWidth / 2) - (bbox.x + bbox.width / 2);
+            transformState.y = (svg.clientHeight / 2) - (bbox.y + bbox.height / 2);
+            
+            // 初期状態を更新
+            initialTransformState.x = transformState.x;
+            initialTransformState.y = transformState.y;
+        }
+
+        // --- イベントリスナーの登録 ---
+        function addEventListeners() {
+            container.addEventListener('pointerdown', onPointerDown);
+            container.addEventListener('pointermove', onPointerMove);
+            container.addEventListener('pointerup', onPointerUp);
+            container.addEventListener('pointercancel', onPointerUp);
+            container.addEventListener('wheel', onWheel, { passive: false }); // ホイールでのページスクロールを無効化
+            resetButton.addEventListener('click', resetTransform);
+        }
+
+        // --- ポインタイベントのハンドラ ---
+
+        function onPointerDown(e) {
+            pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            container.setPointerCapture(e.pointerId); // ポインタをキャプチャし、領域外に出てもイベントを受け取る
+
+            if (pointers.size === 2) {
+                // 2本指操作が開始されたら、その時点での状態を記録
+                updateLastPointerState();
+            }
+        }
+
+        function onPointerMove(e) {
+            if (!pointers.has(e.pointerId)) return;
+
+            // ポインタの位置を更新
+            pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+            if (pointers.size === 1) {
+                // --- 1本指: 移動 ---
+                // movementX/Yはスケールの影響を受けないため、そのまま加算できる
+                transformState.x += e.movementX;
+                transformState.y += e.movementY;
+            } else if (pointers.size === 2) {
+                // --- 2本指: 回転と拡大・縮小 ---
+                const currentPointers = Array.from(pointers.values());
+                const p1 = currentPointers[0];
+                const p2 = currentPointers[1];
+                
+                // 現在の2点間の距離、角度、中心点を計算
+                const distance = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+                const angle = Math.atan2(p1.y - p2.y, p1.x - p2.x);
+                const midpoint = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+
+                // 1. スケール
+                const scaleFactor = distance / lastPointerState.distance;
+                // 中心点からの相対位置を保ちながらスケールを適用
+                transformState.x = midpoint.x + (transformState.x - midpoint.x) * scaleFactor;
+                transformState.y = midpoint.y + (transformState.y - midpoint.y) * scaleFactor;
+                transformState.scale *= scaleFactor;
+
+                // 2. 回転
+                const angleDiff = angle - lastPointerState.angle;
+                const cos = Math.cos(angleDiff);
+                const sin = Math.sin(angleDiff);
+                const dx = transformState.x - midpoint.x;
+                const dy = transformState.y - midpoint.y;
+                transformState.x = midpoint.x + (dx * cos - dy * sin);
+                transformState.y = midpoint.y + (dx * sin + dy * cos);
+                transformState.angle += angleDiff * (180 / Math.PI); // 度に変換して加算
+                
+                // 現在の状態を次フレームのために保存
+                lastPointerState = { distance, angle, midpoint };
+            }
+        }
+
+        function onPointerUp(e) {
+            pointers.delete(e.pointerId);
+            container.releasePointerCapture(e.pointerId);
+        }
+        
+        // --- マウスホイールによるズーム ---
+        function onWheel(e) {
+            e.preventDefault(); // ページのズームを防ぐ
+
+            const scaleFactor = e.deltaY < 0 ? 1.1 : 0.9; // ホイール方向で倍率変更
+            const mousePos = { x: e.clientX, y: e.clientY };
+
+            // マウスカーソル位置を中心にズーム
+            transformState.x = mousePos.x + (transformState.x - mousePos.x) * scaleFactor;
+            transformState.y = mousePos.y + (transformState.y - mousePos.y) * scaleFactor;
+            transformState.scale *= scaleFactor;
+        }
+
+        // 2本指操作のために、前回のポインタ状態を更新するヘルパー関数
+        function updateLastPointerState() {
+            const currentPointers = Array.from(pointers.values());
+            if (currentPointers.length < 2) return;
+            const p1 = currentPointers[0];
+            const p2 = currentPointers[1];
+            
+            lastPointerState.distance = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+            lastPointerState.angle = Math.atan2(p1.y - p2.y, p1.x - p2.x);
+            lastPointerState.midpoint = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+        }
+        
+        // --- 描画更新 ---
+        // requestAnimationFrameループで呼び出され、状態に基づいてSVG要素のtransformを更新する
+        function update() {
+            const { x, y, scale, angle } = transformState;
+            
+            // 1. 定規本体の transform を更新
+            rulerGroup.setAttribute('transform', `translate(${x}, ${y}) rotate(${angle}) scale(${scale})`);
+
+            // 2. 角度ラベルの位置と transform を動的に更新
+            updateLabels();
+            
+            requestAnimationFrame(update); // 次のフレームで再度updateを呼び出す
+        }
+
+        // ラベルの位置と向きを、現在のスケールと回転に合わせて更新する関数
+        function updateLabels() {
+            const { scale, angle } = transformState;
+            const LOCAL_OFFSET = 25; // 頂点からの固定オフセット量（ローカル座標）
+            const BASE_FONT_SIZE = 20; // 基本のフォントサイズ
+
+            // スケールに応じてフォントサイズと縁取りの太さを動的に変更することで、
+            // 見た目の大きさを一定に保ちます。
+            const currentFontSize = BASE_FONT_SIZE / scale;
+            const currentStrokeWidth = 4 / scale;
+
+            // --- 30° ラベルの更新 ---
+            const label30 = document.getElementById('angle-label-30');
+            const p30 = vertices.p30;
+            // ラベルの位置を、頂点からの固定ローカルオフセットで決定
+            const label30X = p30.x - LOCAL_OFFSET * 0.7;
+            const label30Y = p30.y - LOCAL_OFFSET * 0.7;
+            label30.setAttribute('x', label30X);
+            label30.setAttribute('y', label30Y);
+            label30.setAttribute('font-size', currentFontSize);
+            label30.setAttribute('stroke-width', currentStrokeWidth);
+            // ラベル自身の位置を中心に、定規の回転と逆向きに回転させる
+            label30.setAttribute('transform', `rotate(${-angle}, ${label30X}, ${label30Y})`);
+
+            // --- 60° ラベルの更新 ---
+            const label60 = document.getElementById('angle-label-60');
+            const p60 = vertices.p60;
+            const label60X = p60.x + LOCAL_OFFSET * 0.6;
+            const label60Y = p60.y + LOCAL_OFFSET * 0.6;
+            label60.setAttribute('x', label60X);
+            label60.setAttribute('y', label60Y);
+            label60.setAttribute('font-size', currentFontSize);
+            label60.setAttribute('stroke-width', currentStrokeWidth);
+            label60.setAttribute('transform', `rotate(${-angle}, ${label60X}, ${label60Y})`);
+
+            // --- 90° ラベルの更新 ---
+            const label90 = document.getElementById('angle-label-90');
+            const p90 = vertices.p90;
+            const label90X = p90.x - LOCAL_OFFSET * 0.7;
+            const label90Y = p90.y + LOCAL_OFFSET * 0.7;
+            label90.setAttribute('x', label90X);
+            label90.setAttribute('y', label90Y);
+            label90.setAttribute('font-size', currentFontSize);
+            label90.setAttribute('stroke-width', currentStrokeWidth);
+            label90.setAttribute('transform', `rotate(${-angle}, ${label90X}, ${label90Y})`);
+        }
+
+        // --- リセット機能 ---
+        function resetTransform() {
+            transformState = { ...initialTransformState };
+        }
+
+        // --- アプリケーション開始 ---
+        document.addEventListener('DOMContentLoaded', initialize);
+
+    </script>
+</body>
+</html>
+
+
+
+
