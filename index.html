@@ -111,6 +111,7 @@
                 <g class="angle-marks">
                     <path class="angle-mark" data-angle="30" />
                     <path class="angle-mark" data-angle="60" />
+                    <!-- 90度マークを polyline から path に戻す -->
                     <path class="angle-mark" data-angle="90" />
                 </g>
                 <g class="angle-labels">
@@ -126,6 +127,7 @@
                 <g class="angle-marks">
                     <path class="angle-mark" data-angle="45_1" />
                     <path class="angle-mark" data-angle="45_2" />
+                    <!-- 90度マークを polyline から path に戻す -->
                     <path class="angle-mark" data-angle="90" />
                 </g>
                 <g class="angle-labels">
@@ -192,17 +194,19 @@
             if (vertices.p30) { // 30-60-90 ruler
                 const p30 = vertices.p30, p60 = vertices.p60, p90 = vertices.p90;
                 const size90 = MARK_RADIUS * 0.8;
-                rulerGroup.querySelector('[data-angle="30"]').setAttribute('d', `M ${p30.x} ${p30.y+MARK_RADIUS} A ${MARK_RADIUS} ${MARK_RADIUS} 0 0 0 ${p30.x+MARK_RADIUS*Math.sin(30*Math.PI/180)} ${p30.y+MARK_RADIUS*Math.cos(30*Math.PI/180)}`);
-                rulerGroup.querySelector('[data-angle="60"]').setAttribute('d', `M ${p60.x-MARK_RADIUS} ${p60.y} A ${MARK_RADIUS} ${MARK_RADIUS} 0 0 1 ${p60.x-MARK_RADIUS*Math.cos(60*Math.PI/180)} ${p60.y-MARK_RADIUS*Math.sin(60*Math.PI/180)}`);
-                // 90度マークの描画ロジックを修正
-                rulerGroup.querySelector('[data-angle="90"]').setAttribute('d', `M ${p90.x} ${p90.y-size90} L ${p90.x} ${p90.y} L ${p90.x+size90} ${p90.y}`);
+                rulerGroup.querySelector('.angle-marks [data-angle="30"]').setAttribute('d', `M ${p30.x} ${p30.y+MARK_RADIUS} A ${MARK_RADIUS} ${MARK_RADIUS} 0 0 0 ${p30.x+MARK_RADIUS*Math.sin(30*Math.PI/180)} ${p30.y+MARK_RADIUS*Math.cos(30*Math.PI/180)}`);
+                rulerGroup.querySelector('.angle-marks [data-angle="60"]').setAttribute('d', `M ${p60.x-MARK_RADIUS} ${p60.y} A ${MARK_RADIUS} ${MARK_RADIUS} 0 0 1 ${p60.x-MARK_RADIUS*Math.cos(60*Math.PI/180)} ${p60.y-MARK_RADIUS*Math.sin(60*Math.PI/180)}`);
+                // 以前の正常に動作していたパスの描き方に戻します
+                const pathData90 = `M ${p90.x} ${p90.y - size90} L ${p90.x + size90} ${p90.y - size90} L ${p90.x + size90} ${p90.y}`;
+                rulerGroup.querySelector('.angle-marks [data-angle="90"]').setAttribute('d', pathData90);
             } else { // 45-45-90 ruler
                 const p45_1 = vertices.p45_1, p45_2 = vertices.p45_2, p90 = vertices.p90;
                 const size90 = MARK_RADIUS * 0.8;
-                rulerGroup.querySelector('[data-angle="45_1"]').setAttribute('d', `M ${p45_1.x} ${p45_1.y+MARK_RADIUS} A ${MARK_RADIUS} ${MARK_RADIUS} 0 0 0 ${p45_1.x+MARK_RADIUS*Math.cos(45*Math.PI/180)} ${p45_1.y+MARK_RADIUS*Math.sin(45*Math.PI/180)}`);
-                rulerGroup.querySelector('[data-angle="45_2"]').setAttribute('d', `M ${p45_2.x-MARK_RADIUS} ${p45_2.y} A ${MARK_RADIUS} ${MARK_RADIUS} 0 0 1 ${p45_2.x-MARK_RADIUS*Math.cos(45*Math.PI/180)} ${p45_2.y-MARK_RADIUS*Math.sin(45*Math.PI/180)}`);
-                // 90度マークの描画ロジックを修正
-                rulerGroup.querySelector('[data-angle="90"]').setAttribute('d', `M ${p90.x} ${p90.y-size90} L ${p90.x} ${p90.y} L ${p90.x+size90} ${p90.y}`);
+                rulerGroup.querySelector('.angle-marks [data-angle="45_1"]').setAttribute('d', `M ${p45_1.x} ${p45_1.y+MARK_RADIUS} A ${MARK_RADIUS} ${MARK_RADIUS} 0 0 0 ${p45_1.x+MARK_RADIUS*Math.cos(45*Math.PI/180)} ${p45_1.y+MARK_RADIUS*Math.sin(45*Math.PI/180)}`);
+                rulerGroup.querySelector('.angle-marks [data-angle="45_2"]').setAttribute('d', `M ${p45_2.x-MARK_RADIUS} ${p45_2.y} A ${MARK_RADIUS} ${MARK_RADIUS} 0 0 1 ${p45_2.x-MARK_RADIUS*Math.cos(45*Math.PI/180)} ${p45_2.y-MARK_RADIUS*Math.sin(45*Math.PI/180)}`);
+                // こちらも同様に、以前の描き方に戻します
+                const pathData90 = `M ${p90.x} ${p90.y - size90} L ${p90.x + size90} ${p90.y - size90} L ${p90.x + size90} ${p90.y}`;
+                rulerGroup.querySelector('.angle-marks [data-angle="90"]').setAttribute('d', pathData90);
             }
         }
 
@@ -365,6 +369,12 @@
     </script>
 </body>
 </html>
+
+
+
+
+
+
 
 
 
