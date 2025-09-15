@@ -58,8 +58,8 @@
 
         /* --- 角度ラベルのスタイル --- */
         .angle-label {
-            font-size: 20px;
-            font-weight: bold;
+            /* font-size: 20px; */ /* この行をコメントアウトまたは削除 */
+            font-weight: normal; /* boldからnormalに変更 */
             fill: #111;
             text-anchor: middle;
             dominant-baseline: middle;
@@ -348,8 +348,8 @@
         // ラベルの位置と向きを、現在のスケールと回転に合わせて更新する関数
         function updateLabels() {
             const { scale, angle } = transformState;
-            const LOCAL_OFFSET = 25; // 頂点からの固定オフセット量（ローカル座標）
-            const BASE_FONT_SIZE = 20; // 基本のフォントサイズ
+            const LOCAL_OFFSET = 35; // 頂点からの固定オフセット量（ローカル座標）(25から35に変更)
+            const BASE_FONT_SIZE = 36; // 基本のフォントサイズ (45 * 0.8 = 36 に変更)
 
             // スケールに応じてフォントサイズと縁取りの太さを動的に変更することで、
             // 見た目の大きさを一定に保ちます。
@@ -372,8 +372,9 @@
             // --- 60° ラベルの更新 ---
             const label60 = document.getElementById('angle-label-60');
             const p60 = vertices.p60;
-            const label60X = p60.x + LOCAL_OFFSET * 0.6;
-            const label60Y = p60.y + LOCAL_OFFSET * 0.6;
+            // オフセットの係数を大きくして頂点から離す (0.6 -> 0.8)
+            const label60X = p60.x + LOCAL_OFFSET * 0.8;
+            const label60Y = p60.y + LOCAL_OFFSET * 0.8;
             label60.setAttribute('x', label60X);
             label60.setAttribute('y', label60Y);
             label60.setAttribute('font-size', currentFontSize);
@@ -383,8 +384,9 @@
             // --- 90° ラベルの更新 ---
             const label90 = document.getElementById('angle-label-90');
             const p90 = vertices.p90;
-            const label90X = p90.x - LOCAL_OFFSET * 0.7;
-            const label90Y = p90.y + LOCAL_OFFSET * 0.7;
+            // オフセットの係数を大きくして頂点から離す (0.7 -> 1.0)
+            const label90X = p90.x - LOCAL_OFFSET * 1.0;
+            const label90Y = p90.y + LOCAL_OFFSET * 1.0;
             label90.setAttribute('x', label90X);
             label90.setAttribute('y', label90Y);
             label90.setAttribute('font-size', currentFontSize);
@@ -403,6 +405,14 @@
     </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
 
 
 
